@@ -1,0 +1,159 @@
+parameters:
+  - name: artifactory_service
+    type: string
+  - name: container_registry
+    type: string
+  - name: project_name
+    type: string
+  - name: project_folder
+    type: string
+  - name: checkmarx_project_name
+    type: string
+  - name: checkmarx_service
+    type: string
+  - name: sonarqube_service
+    type: string
+  - name: sonarqube_project_key
+    type: string
+  - name: sonarqube_project_name
+    type: string
+  - name: sonarqube_sources
+    type: string
+  - name: replace_token_files
+    type: string
+  - name: docker_file
+    type: string
+  - name: jfrogcontainer_name
+    type: string
+  - name: registry_server_name
+    type: string
+  - name: image_name
+    type: string
+
+jobs:
+  - job: Test
+    displayName: Test
+    steps:
+
+      - task: checkmarx.cxsast.cx-scan-task.Application security testing@2021
+        displayName: "Checkmarx - Application security testing"
+        continueOnError: true
+        timeoutInMinutes: 10
+        inputs:
+          projectName: ${{ parameters.checkmarx_project_name }}
+          syncMode: true
+          CheckmarxService: ${{ parameters.checkmarx_service }}
+          fullTeamName: 'CxServer\SP\EY\Service Lines\CT'
+          incScan: false
+          folderExclusion: "cvs, .svn, .hg , .git, .bzr, bin , obj,  backup, .idea, node_modules, az_templates, doc, EY.CTP.EPMP.Services.Identity, EY.CTP.EPMP.Services.RootSite, EY.CTP.Gaia.AnalyticsDashboard, EY.CTP.Gaia.Communication, Web"
+          fileExtension: |
+            !**/*.DS_Store, !**/*.ipr, !**/*.iws, !**/*.bak, !**/*.tmp, !**/*.aac, !**/*.aif, !**/*.iff, !**/*.m3u, !**/*.mid, !**/*.mp3,
+            !**/*.mpa, !**/*.ra, !**/*.wav, !**/*.wma, !**/*.3g2, !**/*.3gp, !**/*.asf, !**/*.asx, !**/*.avi,!**/*.flv, !**/*.mov, !**/*.mp4, !**/*.mpg,  !**/*.rm, !**/*.swf, !**/*.vob, !**/*.wmv, !**/*.bmp, !**/*.gif, !**/*.jpg, !**/*.png, !**/*.psd, !**/*.tif, !**/*.swf, !**/*.jar, !**/*.zip, !**/*.rar, !**/*.exe, !**/*.dll, !**/*.pdb, !**/*.7z, !**/*.gz, !**/*.tar.gz, !**/*.tar, !**/*.gz, !**/*.ahtm, !**/*.ahtml, !**/*.fhtml, !**/*.hdm, !**/*.hdml,   !**/*.hsql, !**/*.ht, !**/*.hta, !**/*.htc, !**/*.htd, !**/*.war, !**/*.ear, !**/*.htmls, !**/*.ihtml, !**/*.mht, !**/*.mhtm, !**/*.mhtml, !**/*.ssi, !**/*.stm, !**/*.stml, !**/*.ttml, !**/*.txn, !**/*.xhtm, !**/*.xhtml, !**/*.class, !**/*.iml,
+
+      - task: SonarQubePrepare@4
+        displayName: Prepare
+        inputs:
+          SonarQube: ${{ parameters.sonarqube_service }}
+          scannerMode: "MSBuild"
+          projectKey: ${{ parameters.sonarqube_project_key }}
+          projectName: ${{ parameters.sonarqube_project_name }}
+
+      # - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+      #   inputs:
+      #     targetFiles: ${{ parameters.replace_token_files }}
+      #     encoding: "auto"
+      #     writeBOM: true
+      #     verbosity: "detailed"
+      #     actionOnMissing: "warn"
+      #     keepToken: false
+      #     tokenPrefix: "#{"
+      #     tokenSuffix: "}#"
+      #     useLegacyPattern: false
+      #     enableTransforms: false
+      #     enableTelemetry: false
+
+      - task: DotNetCoreCLI@2
+        displayName: "dotnet restore"
+        inputs:
+          command: restore
+          projects: ${{ parameters.project_folder }}/**/*.csproj
+          includeNuGetOrg: true
+
+      # - task: DotNetCoreCLI@2
+      #   displayName: "dotnet restore integration"
+      #   inputs:
+      #     command: restore
+      #     projects: ${{ parameters.project_folder }}/code.hub.ado.IntegrationTests/*
+      #     includeNuGetOrg: true
+
+      # - task: DotNetCoreCLI@2
+      #   displayName: "dotnet restore unit"
+      #   inputs:
+      #     command: restore
+      #     projects: ${{ parameters.project_folder }}/code.hub.ado.UnitTests/*
+      #     includeNuGetOrg: true
+
+      - task: DotNetCoreCLI@2
+        displayName: "dotnet build"
+        continueOnError: true
+        inputs:
+          command: build
+          projects: ${{ parameters.project_folder }}/**/*.csproj
+
+      # - task: DotNetCoreCLI@2
+      #   displayName: "dotnet build integration"
+      #   inputs:
+      #     command: build
+      #     projects: ${{ parameters.project_folder }}/code.hub.ado.IntegrationTests/*
+
+      # - task: DotNetCoreCLI@2
+      #   displayName: "dotnet build unit"
+      #   inputs:
+      #     command: build
+      #     projects: ${{ parameters.project_folder }}/code.hub.ado.UnitTests/*
+
+      - task: DotNetCoreCLI@2
+        displayName: "dotnet test"
+        continueOnError: true
+        inputs:
+          command: test
+          projects: ${{ parameters.project_folder }}/**/*.csproj
+          arguments: '--configuration $(BuildConfiguration) --collect "XPlat Code coverage" -- RunConfiguration.DisableAppDomain=true'
+          testRunTitle: ${{ parameters.project_name }}
+
+      # - task: DotNetCoreCLI@2
+      #   displayName: "dotnet test integration"
+      #   continueOnError: true
+      #   inputs:
+      #     command: test
+      #     projects: ${{ parameters.project_folder }}/code.hub.ado.IntegrationTests/*
+      #     arguments: '--configuration $(BuildConfiguration) --collect "XPlat Code coverage" -- RunConfiguration.DisableAppDomain=true'
+      #     testRunTitle: ${{ parameters.project_name }}-integration
+
+      # - task: DotNetCoreCLI@2
+      #   displayName: "dotnet test unit"
+      #   continueOnError: true
+      #   inputs:
+      #     command: test
+      #     projects: ${{ parameters.project_folder }}/code.hub.ado.UnitTests/*
+      #     arguments: '--configuration $(BuildConfiguration) --collect "XPlat Code coverage" -- RunConfiguration.DisableAppDomain=true'
+      #     testRunTitle: ${{ parameters.project_name }}-unit
+
+      - task: reportgenerator@4
+        inputs:
+          reports: "$(Agent.TempDirectory)/**/*.cobertura.xml"
+          targetdir: "$(Build.SourcesDirectory)/CoverageResults"
+
+      - task: PublishCodeCoverageResults@1
+        displayName: "Publish code coverage"
+        inputs:
+          codeCoverageTool: Cobertura
+          summaryFileLocation: "$(Build.SourcesDirectory)/CoverageResults/Cobertura.xml"
+
+      - task: SonarQubeAnalyze@4
+        displayName: Analyze
+
+      - task: SonarQubePublish@4
+        displayName: Publish
+        inputs:
+          pollingTimeoutSec: "300"

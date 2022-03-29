@@ -1,0 +1,212 @@
+#GUID : 6f183877-0786-4dc8-a973-b97d76e2c83e
+#Date : 02/09/2022 12:20:28
+#Author : DevOps Team
+#version : 1.0.1
+
+# TO REPLACE: [[replaceToken]]
+
+pr:
+  branches:
+    include:
+    - develop
+
+trigger:
+  branches:
+    include:
+      - develop
+      - release/*
+      - hotfix/*
+  batch: true
+  #paths:
+    # include:
+    #   - [[path that needs to be CI trigger otherwise leave commented]]
+
+pool:
+  vmImage: ubuntu-latest # change VM if required
+
+
+variables:
+  ${{ if contains(variables['Build.Reason'], 'PullRequest') }}:
+    deployToDev: false
+    deployToQA: false
+    deployToUAT: false
+    deployToProd: false
+    azure_connection: EY-CTSBP-PROD-CodeHub-01-39844557
+    container_registry: code-hub-images-repository-docker-dev-eu
+    jfrogcontainer_name: code-hub-images-repository-docker-dev-eu
+    registry_server_name: eyctpeu-code-hub-images-repository-docker-dev-eu.jfrog.io
+  ${{ if contains(variables['Build.SourceBranch'], 'develop') }}:
+    deployToDev: true
+    deployToQA: false
+    deployToUAT: false
+    deployToProd: false
+    azure_connection: EY-CTSBP-PROD-CodeHub-01-39844557
+    container_registry: code-hub-images-repository-docker-dev-eu
+    jfrogcontainer_name: code-hub-images-repository-docker-dev-eu
+    registry_server_name: eyctpeu-code-hub-images-repository-docker-dev-eu.jfrog.io
+  ${{ if contains(variables['Build.SourceBranch'], 'feature') }}:
+    deployToDev: true
+    deployToQA: false
+    deployToUAT: false
+    deployToProd: false
+    azure_connection: EY-CTSBP-PROD-CodeHub-01-39844557
+    container_registry: code-hub-images-repository-docker-dev-eu
+    jfrogcontainer_name: code-hub-images-repository-docker-dev-eu
+    registry_server_name: eyctpeu-code-hub-images-repository-docker-dev-eu.jfrog.io
+  ${{ if contains(variables['Build.SourceBranch'], 'release') }}:
+    deployToDev: false
+    deployToQA: true
+    deployToUAT: true
+    deployToProd: true
+    azure_connection: EY-CTSBP-PROD-CodeHub-01-39844557
+    container_registry: code-hub-images-repository-docker-qa-eu
+    jfrogcontainer_name: code-hub-images-repository-docker-qa-eu
+    registry_server_name: eyctpeu-code-hub-images-repository-docker-qa-eu.jfrog.io
+  ${{ if contains(variables['Build.SourceBranch'], 'hotfix') }}:
+    deployToDev: false
+    deployToQA: false
+    deployToUAT: true
+    deployToProd: true
+    azure_connection: EY-CTSBP-PROD-CodeHub-01-39844557
+    container_registry: code-hub-images-repository-docker-qa-eu
+    jfrogcontainer_name: code-hub-images-repository-docker-qa-eu
+    registry_server_name: eyctpeu-code-hub-images-repository-docker-qa-eu.jfrog.io
+stages:
+  - stage: Build
+    displayName: "Test and Build"
+    variables:
+      - template: azure-pipelines-vars.yml
+    jobs:
+      - template: azure-pipelines-test-template.yml
+        parameters:
+          artifactory_service: ${{variables.artifactory_service}}
+          container_registry: ${{variables.container_registry}}
+          project_name: ${{variables.project_name}}
+          project_folder: ${{variables.project_folder}}
+          replace_token_files: ${{variables.replace_token_files}}
+          checkmarx_project_name: ${{variables.checkmarx_project_name}}
+          checkmarx_service: ${{variables.checkmarx_service}}
+          sonarqube_service: ${{variables.sonarqube_service}}
+          sonarqube_project_key: ${{variables.sonarqube_project_key}}
+          sonarqube_project_name: ${{variables.sonarqube_project_name}}
+          sonarqube_sources: ${{variables.sonarqube_sources}}
+          docker_file: ${{variables.docker_file}}
+          jfrogcontainer_name: ${{variables.jfrogcontainer_name}}
+          registry_server_name: ${{variables.registry_server_name}}
+          image_name: ${{variables.image_name}}
+
+      - template: azure-pipelines-build-dotnet-template.yml
+        parameters:
+          artifactory_service: ${{variables.artifactory_service}}
+          container_registry: ${{variables.container_registry}}
+          project_name: ${{variables.project_name}}
+          project_folder: ${{variables.project_folder}}
+          replace_token_files: ${{variables.replace_token_files}}
+          checkmarx_project_name: ${{variables.checkmarx_project_name}}
+          checkmarx_service: ${{variables.checkmarx_service}}
+          sonarqube_service: ${{variables.sonarqube_service}}
+          sonarqube_project_key: ${{variables.sonarqube_project_key}}
+          sonarqube_project_name: ${{variables.sonarqube_project_name}}
+          sonarqube_sources: ${{variables.sonarqube_sources}}
+          docker_file: ${{variables.docker_file}}
+          jfrogcontainer_name: ${{variables.jfrogcontainer_name}}
+          registry_server_name: ${{variables.registry_server_name}}
+          image_name: ${{variables.image_name}}
+
+  - ${{ if contains(variables['deployToDev'], true) }}:
+      - stage: Deploy_To_Dev
+        displayName: "Deploy to Dev - Helm build and Deploy process"
+        dependsOn: Build
+        condition: succeeded()
+        variables:
+          - template: azure-pipelines-vars.yml
+          - group: ${{variables.cd_group}}-DEV
+          - group: ${{variables.ci_group}}
+        jobs:
+          - template: azure-pipelines-deployment-template.yml
+            parameters:
+              project_name: ${{variables.project_name}}
+              artifactory_service: ${{variables.artifactory_service}}
+              artifactory_repository: ${{variables.artifactory_repository}}
+              kubernetesServiceConnection: "Kaas_dev"
+              environment: 'DevelopmentKaas'
+              deployment_path: ${{variables.deployment_path}}
+
+  # - ${{ if contains(variables['deployToQA'], true) }}:
+  #     - stage: Deploy_To_QA
+  #       displayName: "Deploy to QA - Helm build and Deploy process"
+  #       dependsOn: Build
+  #       condition: succeeded()
+  #       variables:
+  #         - template: azure-pipelines-vars.yml
+  #         - group: ${{variables.cd_group}}-QA
+  #         - group: ${{variables.ci_group}}
+  #       jobs:
+  #         - template: azure-pipelines-deployment-template.yml
+  #           parameters:
+  #             project_name: ${{variables.project_name}}
+  #             artifactory_service: ${{variables.artifactory_service}}
+  #             artifactory_repository: ${{variables.artifactory_repository}}
+  #             kubernetesServiceConnection: "eygs-k8s05h-qa"
+  #             environment: 'QA'
+  #             deployment_path: ${{variables.deployment_path}}
+
+  - ${{ if contains(variables['deployToUAT'], true) }}:
+      - stage: Deploy_To_UAT
+        displayName: "Deploy to UAT - Helm build and Deploy process"
+        dependsOn: Build
+        condition: succeeded()
+        variables:
+          - template: azure-pipelines-vars.yml
+          - group: ${{variables.cd_group}}-UAT
+          - group: ${{variables.ci_group}}
+        jobs:
+          - template: azure-pipelines-deployment-template.yml
+            parameters:
+              project_name: ${{variables.project_name}}
+              artifactory_service: ${{variables.artifactory_service}}
+              artifactory_repository: ${{variables.artifactory_repository}}
+              kubernetesServiceConnection: "Kaas_UAT"
+              environment: 'UAT'
+              deployment_path: ${{variables.deployment_path}}
+
+          #TODO: To Validate
+          # - job: JMeter
+          #   pool: Self-Hosted-GAIA-PerfTesting
+          #   steps:
+          #     - script: 'C:\apache-jmeter-5.4\bin\jmeter -n -t GAIA_APIs_Combined.jmx -l results01.jtl'
+          #       workingDirectory: 'C:\#GAIA\Scripts\Final Script to Pipeline'
+          #       displayName: "JMeter Command Line Script"
+          #     - task: PowerShell@2
+          #       env:
+          #         ToAddress: $(jMeterReport_Recipient)
+          #         FromAddress: $(jMeterReport_Sender)
+          #         APIKey: "$(sendGrid_apiKey)"
+          #         Subject: "JMeter test Report - GAIA"
+          #         Body: "Automated delivery of JMeter results from UAT environment, triggered by a re-deployment of root site service on that environment. Please reach DevOps team (CTP_Discovery_DevOps_Team.GID) if any questions."
+          #         FileName: $(jMeterReport_FileName)
+          #         FileNameWithFilePath: $(jMeterReport_FileNameWithFilePath)
+          #         AttachmentType: "text/jtl"
+          #       inputs:
+          #         targetType: "filePath"
+          #         filePath: $(System.DefaultWorkingDirectory)\src\Services\EY.CTP.EPMP.Services.RootSite\deployment\ps-sendgrid-script.ps1
+          #       displayName: "SendGrid report send"
+
+  - ${{ if contains(variables['deployToProd'], true) }}:
+      - stage: Deploy_To_PROD
+        displayName: "Deploy to Prod - Helm build and Deploy process"
+        dependsOn: Deploy_To_UAT
+        condition: succeeded()
+        variables:
+          - template: azure-pipelines-vars.yml
+          - group: ${{variables.cd_group}}-PROD
+          - group: ${{variables.ci_group}}
+        jobs:
+          - template: azure-pipelines-deployment-template.yml
+            parameters:
+              project_name: ${{variables.project_name}}
+              artifactory_service: ${{variables.artifactory_service}}
+              artifactory_repository: ${{variables.artifactory_repository}}
+              kubernetesServiceConnection: "Kaas_PROD"
+              environment: 'Production'
+              deployment_path: ${{variables.deployment_path}}

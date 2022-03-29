@@ -1,0 +1,98 @@
+parameters:
+  - name: artifactory_service
+    type: string
+  - name: container_registry
+    type: string
+  - name: project_name
+    type: string
+  - name: project_folder
+    type: string
+  - name: checkmarx_project_name
+    type: string
+  - name: checkmarx_service
+    type: string
+  - name: sonarqube_service
+    type: string
+  - name: sonarqube_project_key
+    type: string
+  - name: sonarqube_project_name
+    type: string
+  - name: sonarqube_sources
+    type: string
+  - name: replace_token_files
+    type: string
+  - name: docker_file
+    type: string
+  - name: jfrogcontainer_name
+    type: string
+  - name: registry_server_name
+    type: string
+  - name: image_name
+    type: string
+
+jobs:
+  - job: docker_build
+    displayName: Docker Image Build
+    pool:
+      vmImage: "ubuntu-latest"
+
+    steps:
+      - task: Docker@2
+        inputs:
+          containerRegistry: ${{ parameters.container_registry }}
+          command: "login"
+
+      # - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+      #   inputs:
+      #     targetFiles: ${{ parameters.replace_token_files }}
+      #     encoding: "auto"
+      #     writeBOM: true
+      #     verbosity: "detailed"
+      #     actionOnMissing: "warn"
+      #     keepToken: false
+      #     tokenPrefix: "#{"
+      #     tokenSuffix: "}#"
+      #     useLegacyPattern: false
+      #     enableTransforms: false
+      #     enableTelemetry: false
+
+      - task: Docker@2
+        displayName: Build Image
+        inputs:
+          containerRegistry: ${{ parameters.container_registry }}
+          repository: "${{ parameters.image_name }}"
+          buildContext: "./"
+          command: "build"
+          tags: |
+            $(Build.BuildId)
+          Dockerfile: ${{ parameters.docker_file }}
+
+      - task: ArtifactoryDocker@1
+        condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+        displayName: "Push Image"
+        inputs:
+          command: "push"
+          artifactoryService: ${{ parameters.artifactory_service }}
+          targetRepo: ${{ parameters.jfrogcontainer_name }}
+          imageName: ${{ parameters.registry_server_name }}/${{ parameters.image_name }}:$(Build.BuildId)
+          collectBuildInfo: true
+          buildName: "$(Build.DefinitionName)"
+          buildNumber: "$(Build.BuildNumber)"
+          includeEnvVars: true
+
+      - task: ArtifactoryPublishBuildInfo@1
+        condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+        inputs:
+          artifactoryService: ${{ parameters.artifactory_service }}
+          buildName: "$(Build.DefinitionName)"
+          buildNumber: "$(Build.BuildNumber)"
+
+      - task: ArtifactoryXrayScan@1
+        condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+        continueOnError: true
+        timeoutInMinutes: 1
+        inputs:
+          artifactoryService: ${{ parameters.artifactory_service }}
+          buildName: "$(Build.DefinitionName)"
+          buildNumber: "$(Build.BuildNumber)"
+          allowFailBuild: false
